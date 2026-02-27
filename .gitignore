@@ -1,0 +1,34 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Project outputs/artifacts
+outputs/
+*.pt
+*.pth
+*.ckpt
+
+# Data (keep local by default)
+data/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor/OS
+.vscode/
+.DS_Store
+Thumbs.db
+
