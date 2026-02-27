@@ -183,7 +183,7 @@ def compute_dicom_features_df(
     df.index.name = df.index.name.lower() if df.index.name else None
     
     
-    return df.drop(columns=['unnamed: 0']).sort_index()
+    return df.drop(columns=['unnamed: 0'], errors="ignore").sort_index()
 
 
 #print('d')

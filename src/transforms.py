@@ -104,7 +104,7 @@ def build_transforms(
     Notes:
       - We letterbox to preserve aspect ratio and avoid distortion.
       - We replicate channel to 3 for RadImageNet-pretrained backbones that expect 3ch.
-      - We normalize to [-1,1].
+      - We normalizes using ImageNet mean/std to align with pretrained ResNet feature scaling.
     """
 
     base = [

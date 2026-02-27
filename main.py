@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import os
+import random
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -34,6 +36,15 @@ DEFAULT_CFG: Dict[str, Any] = {
     "dropout_p": 0.3,
     "ft_trainable_attrs": None,
 }
+
+def seed_everything(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def _to_builtin(x: Any) -> Any:
@@ -123,6 +134,7 @@ def main() -> None:
     parser.add_argument("--run-grid", action="store_true", help="Run src.grids candidates and pick best by CV mean.")
     parser.add_argument("--config-json", default=None, help="Optional JSON file with a config dict override.")
     args = parser.parse_args()
+    seed_everything(args.seed)
 
     # Create a unique output directory for this run and keep all artifacts there.
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
