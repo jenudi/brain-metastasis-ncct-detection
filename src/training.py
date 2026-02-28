@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Any, List
+from typing import Dict, Optional, Tuple, Any, List, Union
 
 import torch
 import torch.nn as nn
@@ -110,7 +110,7 @@ def evaluate_binary(
     device: torch.device,
     criterion: Optional[nn.Module] = None,
     return_preds: bool = False
-) -> Dict[str, float]:
+) -> Union[Dict[str, float], Tuple[Dict[str, float], Any, Any]]:
     """
     Computes:
       - val_loss (if criterion provided)
@@ -181,8 +181,8 @@ def warmup_train_head_only(
     val_loader: DataLoader,
     device: torch.device,
     *,
-    backbone_attr: Optional[str] = "backbone",
-    head_attr: str = "classifier",
+    backbone_attr: Optional[str] = None,
+    head_attr: str = "fc",
     epochs: int = 5,
     lr_head: float = 1e-3,
     weight_decay: float = 0.0,
@@ -196,11 +196,13 @@ def warmup_train_head_only(
     optimizer_name: str = "adamw",
     optimizer_momentum: float = 0.9,
     optimizer_nesterov: bool = False,
+    label_smoothing: float = 0.0,
+    use_cosine_schedule: bool = False,
 ) -> WarmupResult:
     """
     Warmup stage:
-      - Option 1 (default): Freeze model.<backbone_attr> and train model.<head_attr>
-      - Option 2 (ResNet-friendly): if backbone_attr is None -> freeze ALL, train only model.<head_attr>
+      - Default (backbone_attr=None): freeze ALL params, train only model.<head_attr>
+      - Alternative: if backbone_attr is set, freeze only model.<backbone_attr> and train model.<head_attr>
 
     Returns:
       WarmupResult with best_state_dict and history.
@@ -231,6 +233,11 @@ def warmup_train_head_only(
         nesterov=optimizer_nesterov,
     )
 
+    scheduler = (
+        torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+        if use_cosine_schedule else None
+    )
+
     scaler = torch.amp.GradScaler("cuda", enabled=(amp and device.type == "cuda"))
 
     history: Dict[str, list] = {
@@ -255,6 +262,8 @@ def warmup_train_head_only(
 
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True).float()
+            if label_smoothing > 0.0:
+                y = y * (1.0 - label_smoothing) + label_smoothing * 0.5
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -276,6 +285,9 @@ def warmup_train_head_only(
 
             if log_every and (i % log_every == 0):
                 pass  # keep quiet by default
+
+        if scheduler is not None:
+            scheduler.step()
 
         train_loss = running_loss / max(1, n_seen)
         history["train_loss"].append(train_loss)
@@ -335,6 +347,8 @@ def finetune_all(
     optimizer_name: str = "adamw",
     optimizer_momentum: float = 0.9,
     optimizer_nesterov: bool = False,
+    label_smoothing: float = 0.0,
+    use_cosine_schedule: bool = False,
 ) -> WarmupResult:
     """
     Full fine-tuning stage:
@@ -370,6 +384,11 @@ def finetune_all(
         nesterov=optimizer_nesterov,
     )
 
+    scheduler = (
+        torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+        if use_cosine_schedule else None
+    )
+
     scaler = torch.amp.GradScaler("cuda", enabled=(amp and device.type == "cuda"))
 
     history: Dict[str, list] = {
@@ -394,6 +413,8 @@ def finetune_all(
 
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True).float()
+            if label_smoothing > 0.0:
+                y = y * (1.0 - label_smoothing) + label_smoothing * 0.5
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -412,6 +433,9 @@ def finetune_all(
 
             running_loss += float(loss.item()) * x.size(0)
             n_seen += x.size(0)
+
+        if scheduler is not None:
+            scheduler.step()
 
         train_loss = running_loss / max(1, n_seen)
         history["train_loss"].append(train_loss)

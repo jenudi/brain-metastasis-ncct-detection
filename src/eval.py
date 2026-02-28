@@ -134,7 +134,7 @@ def sample_and_plot_raw_mask_prep_grid(
     if label not in (0, 1):
         raise ValueError("label must be 0 or 1.")
 
-    train_df = df[df[test_col] == False]
+    train_df = df[~df[test_col]]
     lbl_df = train_df[train_df[label_col] == label]
 
     if len(lbl_df) < n_samples:
@@ -145,10 +145,23 @@ def sample_and_plot_raw_mask_prep_grid(
 
     sample_df = lbl_df.sample(n=n_samples, random_state=random_state)
 
+    # Divide [center - width/2, center + width/2] into 3 equal sub-ranges
+    lower = window_center - window_width / 2
+    sub_width = window_width / 3
+    window_center_r1 = lower + sub_width / 2
+    window_center_r2 = lower + sub_width + sub_width / 2
+    window_center_r3 = lower + 2 * sub_width + sub_width / 2
+
+    hu_r1_lo, hu_r1_hi = int(lower), int(lower + sub_width)
+    hu_r2_lo, hu_r2_hi = int(lower + sub_width), int(lower + 2 * sub_width)
+    hu_r3_lo, hu_r3_hi = int(lower + 2 * sub_width), int(lower + window_width)
+
     raw_list = []
     skull_masks = []
     prep_list = []
-    window_list = []
+    window1_list = []
+    window2_list = []
+    window3_list = []
     sample_ids = []
 
     def _process_subset(
@@ -156,7 +169,9 @@ def sample_and_plot_raw_mask_prep_grid(
         raw_out: list,
         mask_out: list,
         prep_out: list,
-        window_out: list,
+        window1_out: list,
+        window2_out: list,
+        window3_out: list,
         ids_out: list,
     ) -> None:
         for sample_id, row in sample_df.iterrows():
@@ -164,19 +179,23 @@ def sample_and_plot_raw_mask_prep_grid(
             thr = np.percentile(hu, percentile)
             skull_mask = hu > thr
             cropped, _ = crop_to_skull_bbox(hu, percentile=percentile)
-            windowed = brain_window(cropped, center=window_center, width=window_width).astype(np.float32)
+            windowed_1 = brain_window(cropped, center=window_center_r1, width=sub_width).astype(np.float32)
+            windowed_2 = brain_window(cropped, center=window_center_r2, width=sub_width).astype(np.float32)
+            windowed_3 = brain_window(cropped, center=window_center_r3, width=sub_width).astype(np.float32)
 
             raw_out.append(hu)
             mask_out.append(skull_mask)
             prep_out.append(cropped)
-            window_out.append(windowed)
+            window1_out.append(windowed_1)
+            window2_out.append(windowed_2)
+            window3_out.append(windowed_3)
             ids_out.append(sample_id)
 
-    _process_subset(sample_df, raw_list, skull_masks, prep_list, window_list, sample_ids)
+    _process_subset(sample_df, raw_list, skull_masks, prep_list, window1_list, window2_list, window3_list, sample_ids)
 
-    # Plot rows for selected label, columns: raw | mask | crop | window
+    # Plot rows for selected label, columns: raw | mask | crop | window1 | window2 | window3
     total_rows = n_samples
-    fig, axes = plt.subplots(total_rows, 4, figsize=(4 * figsize_per_cell, total_rows * figsize_per_cell))
+    fig, axes = plt.subplots(total_rows, 6, figsize=(6 * figsize_per_cell, total_rows * figsize_per_cell))
     if total_rows == 1:
         axes = np.expand_dims(axes, axis=0)
 
@@ -184,15 +203,19 @@ def sample_and_plot_raw_mask_prep_grid(
         axes[i, 0].imshow(raw_list[i], cmap="gray")
         axes[i, 1].imshow(skull_masks[i], cmap="gray")
         axes[i, 2].imshow(prep_list[i], cmap="gray")
-        axes[i, 3].imshow(window_list[i], cmap="gray", vmin=0.0, vmax=1.0)
+        axes[i, 3].imshow(window1_list[i], cmap="gray", vmin=0.0, vmax=1.0)
+        axes[i, 4].imshow(window2_list[i], cmap="gray", vmin=0.0, vmax=1.0)
+        axes[i, 5].imshow(window3_list[i], cmap="gray", vmin=0.0, vmax=1.0)
 
     axes[0, 0].set_title("Raw HU")
     axes[0, 1].set_title("Skull Mask")
     axes[0, 2].set_title("Cropped")
-    axes[0, 3].set_title("Brain Window")
+    axes[0, 3].set_title(f"Window 1\nHU {hu_r1_lo}–{hu_r1_hi}")
+    axes[0, 4].set_title(f"Window 2\nHU {hu_r2_lo}–{hu_r2_hi}")
+    axes[0, 5].set_title(f"Window 3\nHU {hu_r3_lo}–{hu_r3_hi}")
 
     for r in range(total_rows):
-        for c in range(4):
+        for c in range(6):
             axes[r, c].axis("off")
         # Keep sample ID visible even with axes hidden.
         axes[r, 0].text(
@@ -219,7 +242,9 @@ def sample_and_plot_raw_mask_prep_grid(
         "raw_list": raw_list,
         "skull_masks": skull_masks,
         "prep_list": prep_list,
-        "window_list": window_list,
+        "window1_list": window1_list,
+        "window2_list": window2_list,
+        "window3_list": window3_list,
         "sample_ids": sample_ids,
     }
 

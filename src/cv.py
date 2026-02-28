@@ -34,7 +34,9 @@ def _resolve_cv_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "patience_head": cfg.get("patience_head", 2),
         "patience_ft": cfg.get("patience_ft", 3),
         "dropout_p": cfg.get("dropout_p", 0.3),
-        "ft_trainable_attrs": cfg.get("ft_trainable_attrs", ["layer3", "layer4", "fc"]),
+        "ft_trainable_attrs": cfg.get("ft_trainable_attrs", None),
+        "label_smoothing": cfg.get("label_smoothing", 0.0),
+        "use_cosine_schedule": cfg.get("use_cosine_schedule", False),
     }
 
 
@@ -126,6 +128,8 @@ def _run_single_fold(
         optimizer_name=cfg["optimizer"],
         optimizer_momentum=cfg["optimizer_momentum"],
         optimizer_nesterov=cfg["optimizer_nesterov"],
+        label_smoothing=cfg["label_smoothing"],
+        use_cosine_schedule=cfg["use_cosine_schedule"],
     )
     model.load_state_dict(warmup_res.best_state_dict)
 
@@ -145,6 +149,8 @@ def _run_single_fold(
         optimizer_name=cfg["optimizer"],
         optimizer_momentum=cfg["optimizer_momentum"],
         optimizer_nesterov=cfg["optimizer_nesterov"],
+        label_smoothing=cfg["label_smoothing"],
+        use_cosine_schedule=cfg["use_cosine_schedule"],
     )
     model.load_state_dict(ft_res.best_state_dict)
 
@@ -189,7 +195,7 @@ def run_cv(
     k_folds: int = 5,
     seed: int = 42,
     out_size: int = 256,
-    batch_size: int = 16,
+    batch_size: int = 16,# 16
     num_workers: int = 4,
     device: Optional[torch.device] = None,
     pretrained: bool = True,
@@ -199,7 +205,7 @@ def run_cv(
     cfg = _resolve_cv_config(config)
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    df_pool = df[df["test"] == False]
+    df_pool = df[~df["test"]]
     X = df_pool["img"]
     y = df_pool["label"]
     ids = df_pool.index

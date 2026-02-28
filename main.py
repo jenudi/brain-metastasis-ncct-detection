@@ -20,31 +20,24 @@ from src.cv import run_cv
 from src.eval import plot_cv_mean_pr, plot_cv_mean_roc, plot_test_roc_pr, sample_and_plot_raw_mask_prep_grid
 from src.final_model import train_final_and_score_test
 from src.preprocessing import compute_dicom_features_df
-from src.utils import run_features_df_checks, validate_dataset_structure
+from src.utils import run_features_df_checks, seed_everything, validate_dataset_structure
 
 
 DEFAULT_CFG: Dict[str, Any] = {
     "optimizer": "adamw",
-    "lr_ft": 0.00015,
+    "lr_ft": 0.0001,
     "lr_head": 0.003,
     "weight_decay_head": 0.00005,
-    "weight_decay_ft": 0.0007,
+    "weight_decay_ft": 0.002,
     "epochs_head": 12,
     "epochs_ft": 12,
     "patience_head": 2,
-    "patience_ft": 2,
-    "dropout_p": 0.3,
-    "ft_trainable_attrs": None,
+    "patience_ft": 3,
+    "dropout_p": 0.4,
+    "ft_trainable_attrs": ["layer3", "layer4", "fc"],
+    "label_smoothing": 0.05,
+    "use_cosine_schedule": True,
 }
-
-def seed_everything(seed: int):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 
 def _to_builtin(x: Any) -> Any:
@@ -104,7 +97,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42, help="Global random seed for data split and CV.")
     parser.add_argument("--test-size", type=float, default=0.15, help="Fraction of samples reserved for the final test set.")
     parser.add_argument("--k-folds", type=int, default=5, help="Number of folds used in cross-validation.")
-    parser.add_argument("--batch-size", type=int, default=64, help="Batch size for CV and final model training.")
+    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for CV and final model training.")
     parser.add_argument(
         "--num-workers",
         type=int,
@@ -135,6 +128,7 @@ def main() -> None:
     parser.add_argument("--config-json", default=None, help="Optional JSON file with a config dict override.")
     args = parser.parse_args()
     seed_everything(args.seed)
+    t_start = time.time()
 
     # Create a unique output directory for this run and keep all artifacts there.
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -148,18 +142,18 @@ def main() -> None:
         json.dump(_to_builtin(vars(args)), f, indent=2)
 
     # 1) Basic dataset integrity check (folder and labels structure).
-    print(f"[1/7] Validate data structure in: {args.data_root}")
+    print(f"[1/8] Validate data structure in: {args.data_root}")
     validate_dataset_structure(args.data_root, ct_dir_name=args.cts, labels_filename=args.labels)
 
     # 2) Feature table build from DICOM + labels.
-    print("[2/7] Load labels and extract features")
+    print("[2/8] Load labels and extract features")
     labels_df = pd.read_csv(Path(args.data_root) / args.labels, index_col="ID")
     ct_dir = Path(args.data_root) / args.cts
     features_df = compute_dicom_features_df(str(ct_dir), labels_df, processes=args.num_workers)
     features_df.to_pickle(out_dir / "features_df.pkl")
 
     # 3) Save sanity checks on the generated features table.
-    print("[3/7] Run features_df data checks")
+    print("[3/8] Run features_df data checks")
     checks = run_features_df_checks(features_df)
     with open(out_dir / "features_checks_summary.json", "w") as f:
         json.dump(
@@ -173,19 +167,18 @@ def main() -> None:
         )
 
     # 4) Create a fixed train/test split and persist it for reproducibility.
-    print("[4/7] Create train/test split flags")
+    print("[4/8] Create train/test split flags")
     train_idx, test_idx = train_test_split(
         features_df.index,
         test_size=args.test_size,
         stratify=features_df["label"],
         random_state=args.seed,
     )
-    features_df.loc[train_idx, "test"] = False
-    features_df.loc[test_idx, "test"] = True
+    features_df["test"] = features_df.index.isin(test_idx)
     features_df.to_pickle(out_dir / "features_df_split.pkl")
 
     # 4.5) Save qualitative preprocessing examples for each class.
-    print("[4.5/7] Save preprocessing example plots")
+    print("[5/8] Save preprocessing example plots")
     sample_and_plot_raw_mask_prep_grid(
         features_df,
         args.prep_plot_n,
@@ -204,10 +197,10 @@ def main() -> None:
     cfg = dict(DEFAULT_CFG)
     if args.config_json:
         with open(args.config_json) as f:
-            cfg = json.load(f)
+            cfg.update(json.load(f))
 
     # 5) Run CV (optionally over a grid), then save threshold tables and CV curves.
-    print("[5/7] Run CV")
+    print("[6/8] Run CV")
     if args.run_grid:
         from src.grids import grid
 
@@ -290,7 +283,7 @@ def main() -> None:
         )
 
     # 6) Train final model on train split and score only the held-out test split.
-    print("[6/7] Train final model and score test")
+    print("[7/8] Train final model and score test")
     model, test_pred_df = train_final_and_score_test(
         features_df,
         cfg=cfg,
@@ -324,12 +317,19 @@ def main() -> None:
     fp = int(((y_true == 0) & (y_pred == 1)).sum())
     fn = int(((y_true == 1) & (y_pred == 0)).sum())
 
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else float("nan")
+    ppv = tp / (tp + fp) if (tp + fp) > 0 else float("nan")
+    f1 = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) > 0 else float("nan")
+
     test_metrics = {
         "threshold": threshold,
         "test_roc_auc": test_auc,
         "test_auprc": test_auprc,
         "test_roc_auc_from_plot_fn": curve_metrics["roc_auc"],
         "test_auprc_from_plot_fn": curve_metrics["auprc"],
+        "sensitivity": sensitivity,
+        "ppv": ppv,
+        "f1": f1,
         "tp": tp,
         "tn": tn,
         "fp": fp,
@@ -338,10 +338,15 @@ def main() -> None:
     with open(out_dir / "test_metrics.json", "w") as f:
         json.dump(_to_builtin(test_metrics), f, indent=2)
 
-    print("[7/7] Done")
+    elapsed = time.time() - t_start
+    hours, rem = divmod(int(elapsed), 3600)
+    minutes, seconds = divmod(rem, 60)
+
+    print("[8/8] Done")
     print(f"Outputs saved to: {out_dir}")
     print(f"Test ROC-AUC: {test_auc:.6f}")
     print(f"Test AUPRC:   {test_auprc:.6f}")
+    print(f"Total runtime: {hours:02d}:{minutes:02d}:{seconds:02d}")
 
 
 if __name__ == "__main__":

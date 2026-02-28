@@ -13,7 +13,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,  # fine-tune all layers
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -30,7 +31,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -47,7 +49,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -64,7 +67,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": ["layer3", "layer4", "fc"],
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -81,10 +85,11 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.5,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
-        {
+    {
         "name": "shorter_ft_epochs",
         "config": {
             "optimizer": "adamw",
@@ -98,7 +103,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -115,7 +121,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -132,7 +139,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -149,7 +157,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.3,
             "ft_trainable_attrs": None,
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
     {
@@ -166,7 +175,8 @@ grid = [
             "patience_ft": 2,
             "dropout_p": 0.4,
             "ft_trainable_attrs": ["layer4", "fc"],
-            #"batch_size": 200,
+            "label_smoothing": 0.0,
+            "use_cosine_schedule": False,
         },
     },
 ]

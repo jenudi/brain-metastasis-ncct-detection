@@ -12,8 +12,8 @@ class BrainCTDataset(Dataset):
         ids: Optional[Sequence[str]] = None,
         transform=None,
         apply_brain_window: bool = True,
-        window_center: int = 40,
-        window_width: int = 80,
+        window_center: int = 45, # 40
+        window_width: int = 90, # 80
     ):
         self.values = list(values)
         self.labels = None if labels is None else list(labels)
@@ -40,15 +40,25 @@ class BrainCTDataset(Dataset):
             x = np.asarray(x)
         x = x.astype(np.float32, copy=False)
 
-        # HU -> [0,1] brain window
+        # HU -> (3,H,W) by splitting [center-width/2, center+width/2] into 3 equal sub-windows
         if self.apply_brain_window:
-            x = brain_window(x, center=self.window_center, width=self.window_width)  # -> [0,1] float
+            lower = self.window_center - self.window_width / 2
+            sub_w = self.window_width / 3
+            c1 = lower + sub_w / 2
+            c2 = lower + sub_w + sub_w / 2
+            c3 = lower + 2 * sub_w + sub_w / 2
+            w1 = brain_window(x, center=c1, width=sub_w).astype(np.float32)
+            w2 = brain_window(x, center=c2, width=sub_w).astype(np.float32)
+            w3 = brain_window(x, center=c3, width=sub_w).astype(np.float32)
+            x = np.stack([w1, w2, w3], axis=0)  # (3,H,W)
 
-        # transforms: letterbox + aug + 3ch + normalize
+        # transforms: letterbox + aug + normalize
         if self.transform is not None:
             x = self.transform(x)
         else:
-            x = torch.tensor(x).float().unsqueeze(0)  # (1,H,W)
+            x = torch.tensor(x).float()
+            if x.ndim == 2:
+                x = x.unsqueeze(0)  # (1,H,W) fallback for apply_brain_window=False
 
         # label
         if self.labels is None:

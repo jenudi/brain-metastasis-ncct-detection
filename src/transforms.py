@@ -24,8 +24,8 @@ class ToFloatTensorCHW:
         elif img.ndim == 3 and img.shape[-1] == 1:
             img = img.permute(2, 0, 1)
 
-        # already (1,H,W)
-        elif img.ndim == 3 and img.shape[0] == 1:
+        # already (C,H,W) — e.g. (1,H,W) single-channel or (3,H,W) multi-window
+        elif img.ndim == 3 and img.shape[0] in (1, 3):
             pass
         else:
             raise ValueError(f"Unexpected image shape: {tuple(img.shape)}")
@@ -44,11 +44,11 @@ class ResizeLetterbox:
         self.pad_value = float(pad_value)
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (1,H,W)
-        if x.ndim != 3 or x.shape[0] != 1:
-            raise ValueError(f"Expected (1,H,W), got {tuple(x.shape)}")
+        # x: (C,H,W)
+        if x.ndim != 3:
+            raise ValueError(f"Expected (C,H,W), got {tuple(x.shape)}")
 
-        _, h, w = x.shape
+        c, h, w = x.shape
         scale = min(self.out_h / h, self.out_w / w)
         new_h = max(1, int(round(h * scale)))
         new_w = max(1, int(round(w * scale)))
@@ -113,27 +113,29 @@ def build_transforms(
     ]
 
     if train:
-        # light, anatomy-safe augmentations (on tensor)
         aug = [
-            # Random small rotations and translations; keep it mild for CT.
             transforms.RandomAffine(
-                degrees=10,
-                translate=(0.03, 0.03),
-                scale=(0.95, 1.05),
+                degrees=15,
+                translate=(0.05, 0.05),
+                scale=(0.90, 1.10),
                 shear=None,
                 interpolation=transforms.InterpolationMode.BILINEAR,
                 fill=pad_value_01,
             ),
-            # Optional: horizontal flip is generally acceptable in axial brain slices
             transforms.RandomHorizontalFlip(p=0.5),
+            # Slight blur simulates resolution/acquisition variation
+            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.5)),
         ]
     else:
         aug = []
 
     tail = [
-        RepeatTo3Channels(),
         transforms.Normalize(mean=[0.485,0.456,0.406],
-                            std=[0.229,0.224,0.225])
+                            std=[0.229,0.224,0.225]),
     ]
+
+    if train:
+        # RandomErasing after normalization: masks random patches to simulate artifacts
+        tail.append(transforms.RandomErasing(p=0.3, scale=(0.02, 0.15), value=0))
 
     return transforms.Compose(base + aug + tail)

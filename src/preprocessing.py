@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pydicom
 from multiprocessing import Pool
+from pathlib import Path
 from typing import Optional
 import pandas as pd
 from tqdm import tqdm
@@ -57,7 +58,7 @@ def extract_dicom_metadata_features(path: str) -> dict:
 
     out = {
         #"filename": os.path.basename(path),
-        "ID": path[path.index('ID_'):-4],#.rstrip('.dcm'),
+        "ID": Path(path).stem,
         "path": path,
         "ok": 0,
         "error": None,
@@ -159,13 +160,6 @@ def compute_dicom_features_df(
 
     df = pd.DataFrame(out).set_index('ID').join(labels_df)
 
-    # Align index to labels_df
-    #df.index = labels_df.index
-
-    # Add label column directly from CSV
-    #if "Label" in labels_df.columns:
-     #   df["label"] = labels_df["Label"].values
-
     # Column ordering
     meta_cols_order = [
         "ID", "path", "Label", "ok", "error",
@@ -184,13 +178,6 @@ def compute_dicom_features_df(
     
     
     return df.drop(columns=['unnamed: 0'], errors="ignore").sort_index()
-
-
-#print('d')
-#features_df = compute_dicom_features_df('data/CTs', 
-                                        #pd.read_csv(os.path.join('data/', "labels1.csv"), index_col="ID"),
-                                        #processes=1)
-
 
 
 def brain_window(hu, center=40, width=80):
