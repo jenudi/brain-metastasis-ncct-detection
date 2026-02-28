@@ -1,10 +1,10 @@
-# Clinical Neuro-Oncology – Brain CT Binary Classification
+# Clinical Neuro-Oncology – Brain NCCT Binary Classification
 
-End-to-end pipeline for binary classification of brain CT DICOM studies using transfer learning, with cross-validated threshold selection and sensitivity-targeted final evaluation.
+End-to-end pipeline for binary classification of brain **non-contrast CT (NCCT)** DICOM studies using transfer learning, with cross-validated threshold selection and sensitivity-targeted final evaluation.
 
 ## Overview
 
-This project implements a complete, reproducible machine-learning pipeline for detecting a positive finding in brain CT scans under severe class imbalance (~17:1). The pipeline covers DICOM ingestion and HU preprocessing, multi-window image encoding, ResNet-18 transfer learning with a two-stage training protocol (head warmup → partial fine-tuning), stratified cross-validation with out-of-fold threshold analysis, and a single held-out test evaluation.
+This project implements a complete, reproducible machine-learning pipeline for detecting a positive finding in brain non-contrast CT (NCCT) scans under severe class imbalance (~17:1). The pipeline covers DICOM ingestion and HU preprocessing, multi-window image encoding, ResNet-18 transfer learning with a two-stage training protocol (head warmup → partial fine-tuning), stratified cross-validation with out-of-fold threshold analysis, and a single held-out test evaluation.
 
 Key design decisions: multi-window HU stacking gives the model complementary tissue contrasts (edema, parenchyma, hemorrhage) as separate input channels; `WeightedRandomSampler` handles class imbalance at the loader level; threshold selection is driven by a sensitivity target to minimize missed positives, reflecting clinical cost asymmetry.
 
@@ -321,6 +321,14 @@ notebooks/eda.ipynb
 
 ## Results
 
+### Summary
+
+The model achieves **ROC-AUC 0.892** and **AUPRC 0.664** on the held-out test set, with a CV ROC-AUC of 0.936 ± 0.026 and CV AUPRC of 0.720 ± 0.064. The moderate CV→test drop in AUPRC (0.72 → 0.66) is expected given the very small positive class (~42 test positives) where a few cases can shift AUPRC substantially; the ROC-AUC gap is tighter (0.936 → 0.892), suggesting reasonable generalization.
+
+At the selected threshold (0.30, sensitivity-targeted): the model detects **69% of positive cases** (29/42) with a PPV of 53% — meaning roughly 1 in 2 flagged studies is a true positive. This operating point reflects the clinical priority of minimizing missed positives at the cost of additional false alarms (26 FP out of 769 negatives, ~3.4% false positive rate on negatives).
+
+The training ROC-AUC remains near 1.0 throughout, indicating residual overfitting inherent to the dataset size and imbalance. The regularization strategies applied (partial fine-tuning, cosine LR, label smoothing, augmentation, batch=16) successfully reduced the train→val gap compared to baseline but could not eliminate it entirely with only ~280 positive examples.
+
 ### Cross-Validation Performance (5-Fold)
 
 | Metric | Mean | Std |
@@ -349,6 +357,29 @@ Threshold selected from CV summary using `sens_target` strategy (minimum sensiti
 ![Test ROC Curve](assets/test_roc_curve.png)
 
 ![Test PR Curve](assets/test_pr_curve.png)
+
+---
+
+## Further Analysis
+
+Potential directions to extend or improve this work:
+
+#### Data & Generalization
+- **External validation** — evaluate on data from a different institution or scanner to assess generalizability beyond the training distribution
+- **Error analysis** — inspect false negatives and false positives qualitatively to identify failure patterns (e.g., specific pathology subtypes, image artifacts, edge cases)
+- **Data augmentation of positives** — explore synthetic oversampling (e.g., copy-paste patches from positive cases) given the very limited positive count (~279)
+
+#### Modeling
+- **Lighter baseline model** — given persistent overfitting, test a smaller/simpler architecture (e.g., fewer layers, lower capacity) to find a better bias-variance tradeoff with only ~280 positive examples
+- **3D models** — if volumetric (multi-slice) data is available, 3D CNNs or 2.5D approaches could exploit inter-slice context
+
+#### Training & Optimization
+- **Learning rate search** — systematic LR range test instead of manual tuning
+
+#### Evaluation
+- **Confidence intervals on test metrics** — bootstrap the test set to report uncertainty on ROC-AUC and AUPRC
+- **Subgroup analysis** — stratify test performance by available metadata (e.g., scanner, demographics) if available
+- **Clinical threshold sweep** — present sensitivity/specificity tradeoff curves to a clinician for operating point selection rather than using a fixed algorithmic target
 
 ---
 
